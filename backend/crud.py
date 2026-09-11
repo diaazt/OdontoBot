@@ -188,3 +188,240 @@ def restore_patient(
     db.refresh(db_patient)
 
     return db_patient
+
+def create_professional(
+    db: Session,
+    professional: schemas.ProfessionalCreate
+) -> models.Professional:
+
+    db_professional = models.Professional(
+        **professional.model_dump()
+    )
+
+    db.add(db_professional)
+    db.commit()
+    db.refresh(db_professional)
+
+    return db_professional
+
+
+def get_professional(
+    db: Session,
+    professional_id: int
+) -> models.Professional | None:
+
+    statement = select(models.Professional).where(
+        models.Professional.id == professional_id,
+        models.Professional.deleted_at.is_(None)
+    )
+
+    return db.scalar(statement)
+
+
+def get_professionals(
+    db: Session,
+    q: str | None = None,
+    active: bool | None = None,
+    specialty: str | None = None,
+    page: int = 1,
+    page_size: int = 20
+):
+
+    filters = [
+        models.Professional.deleted_at.is_(None)
+    ]
+
+    if active is not None:
+        filters.append(
+            models.Professional.active == active
+        )
+
+    if specialty:
+        filters.append(
+            models.Professional.specialty.ilike(
+                f"%{specialty.strip()}%"
+            )
+        )
+
+    if q:
+        search = f"%{q.strip()}%"
+
+        filters.append(
+            or_(
+                models.Professional.first_name.ilike(search),
+                models.Professional.last_name.ilike(search),
+                models.Professional.specialty.ilike(search),
+                models.Professional.license_number.ilike(search),
+                models.Professional.phone.ilike(search),
+                models.Professional.email.ilike(search),
+            )
+        )
+
+    total_statement = (
+        select(func.count())
+        .select_from(models.Professional)
+        .where(*filters)
+    )
+
+    total = db.scalar(total_statement) or 0
+
+    statement = (
+        select(models.Professional)
+        .where(*filters)
+        .order_by(
+            models.Professional.last_name,
+            models.Professional.first_name,
+            models.Professional.id
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    professionals = db.scalars(statement).all()
+
+    return professionals, total
+
+def update_professional(
+    db: Session,
+    professional_id: int,
+    professional_update: schemas.ProfessionalUpdate
+) -> models.Professional | None:
+
+    db_professional = get_professional(
+        db,
+        professional_id
+    )
+
+    if db_professional is None:
+        return None
+
+    update_data = professional_update.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in update_data.items():
+        setattr(db_professional, field, value)
+
+    db.commit()
+    db.refresh(db_professional)
+
+    return db_professional
+
+def delete_professional(
+    db: Session,
+    professional_id: int
+) -> models.Professional | None:
+
+    db_professional = get_professional(
+        db,
+        professional_id
+    )
+
+    if db_professional is None:
+        return None
+
+    db_professional.deleted_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(db_professional)
+
+    return db_professional
+
+def find_duplicate_professional(
+    db: Session,
+    professional: schemas.ProfessionalCreate
+) -> models.Professional | None:
+
+    conditions = []
+
+    if professional.license_number is not None:
+        conditions.append(
+            func.lower(models.Professional.license_number)
+            == professional.license_number.lower()
+        )
+
+    if professional.email is not None:
+        conditions.append(
+            func.lower(models.Professional.email)
+            == professional.email.lower()
+        )
+
+    if professional.phone is not None:
+        conditions.append(
+            models.Professional.phone == professional.phone
+        )
+
+    if not conditions:
+        return None
+
+    statement = select(models.Professional).where(
+        models.Professional.deleted_at.is_(None),
+        func.lower(models.Professional.first_name)
+        == professional.first_name.lower(),
+        func.lower(models.Professional.last_name)
+        == professional.last_name.lower(),
+        or_(*conditions)
+    )
+
+    return db.scalar(statement)
+
+def find_archived_duplicate_professional(
+    db: Session,
+    professional: schemas.ProfessionalCreate
+) -> models.Professional | None:
+
+    conditions = []
+
+    if professional.license_number is not None:
+        conditions.append(
+            func.lower(models.Professional.license_number)
+            == professional.license_number.lower()
+        )
+
+    if professional.email is not None:
+        conditions.append(
+            func.lower(models.Professional.email)
+            == professional.email.lower()
+        )
+
+    if professional.phone is not None:
+        conditions.append(
+            models.Professional.phone == professional.phone
+        )
+
+    if not conditions:
+        return None
+
+    statement = select(models.Professional).where(
+        models.Professional.deleted_at.is_not(None),
+        func.lower(models.Professional.first_name)
+        == professional.first_name.lower(),
+        func.lower(models.Professional.last_name)
+        == professional.last_name.lower(),
+        or_(*conditions)
+    )
+
+    return db.scalar(statement)
+
+def restore_professional(
+    db: Session,
+    professional_id: int
+) -> models.Professional | None:
+
+    db_professional = db.get(
+        models.Professional,
+        professional_id
+    )
+
+    if db_professional is None:
+        return None
+
+    if db_professional.deleted_at is None:
+        return db_professional
+
+    db_professional.deleted_at = None
+
+    db.commit()
+    db.refresh(db_professional)
+
+    return db_professional
