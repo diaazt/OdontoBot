@@ -1,8 +1,9 @@
 from datetime import datetime
+from decimal import Decimal
 
 import phonenumbers
 from phonenumbers import NumberParseException
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, Field
 
 
 def normalize_phone(value: str) -> str:
@@ -222,6 +223,111 @@ class ProfessionalResponse(BaseModel):
 
 class ProfessionalListResponse(BaseModel):
     items: list[ProfessionalResponse]
+    total: int
+    page: int
+    page_size: int
+
+class ServiceCreate(BaseModel):
+    name: str
+    description: str | None = None
+    estimated_duration_minutes: int = Field(gt=0)
+    initial_price: Decimal = Field(ge=0)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Service name cannot be blank")
+
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        return value or None
+
+class ServiceUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    estimated_duration_minutes: int | None = Field(
+        default=None,
+        gt=0
+    )
+    active: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Service name cannot be blank")
+
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        return value or None
+
+class ServicePriceCreate(BaseModel):
+    amount: Decimal = Field(ge=0)
+
+
+class ServicePriceResponse(BaseModel):
+    id: int
+    service_id: int
+    amount: Decimal
+    valid_from: datetime
+    valid_until: datetime | None
+    created_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+class ServiceResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    estimated_duration_minutes: int
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+    prices: list[ServicePriceResponse]
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+class ServiceListResponse(BaseModel):
+    items: list[ServiceResponse]
     total: int
     page: int
     page_size: int

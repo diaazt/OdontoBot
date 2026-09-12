@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import patients, professionals
+from routers import patients, professionals, services
 
 app = FastAPI(
     title="OdontoBot API",
@@ -8,6 +8,7 @@ app = FastAPI(
 
 app.include_router(patients.router)
 app.include_router(professionals.router)
+app.include_router(services.router)
 
 
 @app.get("/")   # devuelve informacion basica de la API

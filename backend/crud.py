@@ -1,5 +1,5 @@
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 import models
 import schemas
@@ -425,3 +425,258 @@ def restore_professional(
     db.refresh(db_professional)
 
     return db_professional
+
+def create_service(
+    db: Session,
+    service: schemas.ServiceCreate
+):
+    service_data = service.model_dump(
+        exclude={"initial_price"}
+    )
+
+    db_service = models.Service(
+        **service_data
+    )
+
+    db.add(db_service)
+
+    # Envía el INSERT a PostgreSQL sin confirmar todavía
+    # para obtener, entre otras cosas, el ID.
+    db.flush()
+
+    return db_service
+
+
+def create_service_price(
+    db: Session,
+    service_id: int,
+    amount,
+    valid_from: datetime | None = None
+):
+    price_data = {
+        "service_id": service_id,
+        "amount": amount
+    }
+
+    if valid_from is not None:
+        price_data["valid_from"] = valid_from
+
+    db_price = models.ServicePrice(
+        **price_data
+    )
+
+    db.add(db_price)
+    db.flush()
+
+    return db_price
+
+def get_service(
+    db: Session,
+    service_id: int
+):
+    statement = (
+        select(models.Service)
+        .options(
+            selectinload(models.Service.prices)
+        )
+        .where(
+            models.Service.id == service_id,
+            models.Service.deleted_at.is_(None)
+        )
+    )
+
+    return db.scalar(statement)
+
+
+def get_services(
+    db: Session,
+    q: str | None = None,
+    active: bool | None = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    filters = [
+        models.Service.deleted_at.is_(None)
+    ]
+
+    if active is not None:
+        filters.append(
+            models.Service.active == active
+        )
+
+    if q:
+        search = f"%{q.strip()}%"
+
+        filters.append(
+            or_(
+                models.Service.name.ilike(search),
+                models.Service.description.ilike(search)
+            )
+        )
+
+    total_statement = (
+        select(func.count())
+        .select_from(models.Service)
+        .where(*filters)
+    )
+
+    total = db.scalar(total_statement) or 0
+
+    statement = (
+        select(models.Service)
+        .options(
+            selectinload(models.Service.prices)
+        )
+        .where(*filters)
+        .order_by(
+            models.Service.name,
+            models.Service.id
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    services = db.scalars(statement).all()
+
+    return services, total
+
+def update_service(
+    db: Session,
+    service_id: int,
+    service: schemas.ServiceUpdate
+):
+    db_service = get_service(
+        db,
+        service_id
+    )
+
+    if db_service is None:
+        return None
+
+    update_data = service.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in update_data.items():
+        setattr(
+            db_service,
+            field,
+            value
+        )
+
+    db.commit()
+    db.refresh(db_service)
+
+    return db_service
+
+def delete_service(
+    db: Session,
+    service_id: int
+):
+    db_service = get_service(
+        db,
+        service_id
+    )
+
+    if db_service is None:
+        return None
+
+    db_service.deleted_at = datetime.now(
+        timezone.utc
+    )
+
+    db.commit()
+    db.refresh(db_service)
+
+    return db_service
+
+def restore_service(
+    db: Session,
+    service_id: int
+):
+    db_service = db.get(
+        models.Service,
+        service_id
+    )
+
+    if db_service is None:
+        return None
+
+    if db_service.deleted_at is None:
+        return db_service
+
+    db_service.deleted_at = None
+
+    db.commit()
+    db.refresh(db_service)
+
+    return db_service
+
+def get_service_for_update(
+    db: Session,
+    service_id: int
+):
+    statement = (
+        select(models.Service)
+        .where(
+            models.Service.id == service_id,
+            models.Service.deleted_at.is_(None)
+        )
+        .with_for_update()
+    )
+
+    return db.scalar(statement)
+
+def get_current_service_price(
+    db: Session,
+    service_id: int
+):
+    statement = (
+        select(models.ServicePrice)
+        .where(
+            models.ServicePrice.service_id == service_id,
+            models.ServicePrice.valid_until.is_(None)
+        )
+    )
+
+    return db.scalar(statement)
+
+def close_service_price(
+    db: Session,
+    price: models.ServicePrice,
+    valid_until: datetime
+):
+    price.valid_until = valid_until
+
+    db.flush()
+
+    return price
+
+def find_duplicate_service(
+    db: Session,
+    service: schemas.ServiceCreate
+):
+    statement = (
+        select(models.Service)
+        .where(
+            models.Service.deleted_at.is_(None),
+            func.lower(models.Service.name) == service.name.lower()
+        )
+    )
+
+    return db.scalar(statement)
+
+
+def find_archived_duplicate_service(
+    db: Session,
+    service: schemas.ServiceCreate
+):
+    statement = (
+        select(models.Service)
+        .where(
+            models.Service.deleted_at.is_not(None),
+            func.lower(models.Service.name) == service.name.lower()
+        )
+    )
+
+    return db.scalar(statement)
