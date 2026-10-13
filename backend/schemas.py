@@ -1,9 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
-
+from typing import Literal
 import phonenumbers
 from phonenumbers import NumberParseException
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, Field, model_validator
 
 
 def normalize_phone(value: str) -> str:
@@ -328,6 +328,148 @@ class ServiceResponse(BaseModel):
 
 class ServiceListResponse(BaseModel):
     items: list[ServiceResponse]
+    total: int
+    page: int
+    page_size: int
+
+AppointmentStatus = Literal[
+    "scheduled",
+    "confirmed",
+    "completed",
+    "cancelled",
+    "no_show",
+]
+
+class AppointmentCreate(BaseModel):
+    patient_id: int = Field(gt=0)
+    professional_id: int = Field(gt=0)
+    service_id: int | None = Field(default=None, gt=0)
+
+    start_at: datetime
+    end_at: datetime
+
+    reason: str | None = None
+    notes: str | None = None
+
+    @field_validator("reason", "notes")
+    @classmethod
+    def normalize_optional_text(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        return value or None
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.start_at.utcoffset() is None:
+            raise ValueError(
+                "start_at must include timezone information"
+            )
+
+        if self.end_at.utcoffset() is None:
+            raise ValueError(
+                "end_at must include timezone information"
+            )
+
+        if self.end_at <= self.start_at:
+            raise ValueError(
+                "end_at must be after start_at"
+            )
+
+        return self
+
+class AppointmentUpdate(BaseModel):
+    patient_id: int | None = Field(
+        default=None,
+        gt=0
+    )
+
+    professional_id: int | None = Field(
+        default=None,
+        gt=0
+    )
+
+    service_id: int | None = Field(
+        default=None,
+        gt=0
+    )
+
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+
+    status: AppointmentStatus | None = None
+
+    reason: str | None = None
+    notes: str | None = None
+
+    @field_validator("reason", "notes")
+    @classmethod
+    def normalize_optional_text(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        return value or None
+
+    @field_validator("start_at", "end_at")
+    @classmethod
+    def validate_timezone(
+    cls,
+    value: datetime | None
+    ) -> datetime | None:
+        if value is None:
+            return None
+
+        if value.utcoffset() is None:
+            raise ValueError(
+                "Datetime must include timezone information"
+            )
+
+        return value
+    @field_validator("patient_id", "professional_id")
+    @classmethod
+    def validate_required_ids(cls, value: int | None) -> int | None:
+        if value is None:
+            raise ValueError(
+                "patient_id and professional_id cannot be null"
+            )
+
+        return value
+
+class AppointmentResponse(BaseModel):
+    id: int
+
+    patient_id: int
+    professional_id: int
+    service_id: int | None
+
+    start_at: datetime
+    end_at: datetime
+
+    status: AppointmentStatus
+
+    reason: str | None
+    notes: str | None
+
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )   
+
+class AppointmentListResponse(BaseModel):
+    items: list[AppointmentResponse]
     total: int
     page: int
     page_size: int

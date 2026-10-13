@@ -189,6 +189,53 @@ def restore_patient(
 
     return db_patient
 
+def get_active_patient(
+    db: Session,
+    patient_id: int
+):
+    statement = (
+        select(models.Patient)
+        .where(
+            models.Patient.id == patient_id,
+            models.Patient.deleted_at.is_(None),
+            models.Patient.active.is_(True)
+        )
+    )
+
+    return db.scalar(statement)
+
+
+def get_active_professional(
+    db: Session,
+    professional_id: int
+):
+    statement = (
+        select(models.Professional)
+        .where(
+            models.Professional.id == professional_id,
+            models.Professional.deleted_at.is_(None),
+            models.Professional.active.is_(True)
+        )
+    )
+
+    return db.scalar(statement)
+
+
+def get_active_service(
+    db: Session,
+    service_id: int
+):
+    statement = (
+        select(models.Service)
+        .where(
+            models.Service.id == service_id,
+            models.Service.deleted_at.is_(None),
+            models.Service.active.is_(True)
+        )
+    )
+
+    return db.scalar(statement)
+
 def create_professional(
     db: Session,
     professional: schemas.ProfessionalCreate
@@ -680,3 +727,169 @@ def find_archived_duplicate_service(
     )
 
     return db.scalar(statement)
+
+def create_appointment(
+    db: Session,
+    appointment: schemas.AppointmentCreate
+):
+    db_appointment = models.Appointment(
+        **appointment.model_dump()
+    )
+
+    db.add(db_appointment)
+    db.flush()
+
+    return db_appointment
+
+def get_appointment(
+    db: Session,
+    appointment_id: int
+):
+    statement = (
+        select(models.Appointment)
+        .where(
+            models.Appointment.id == appointment_id,
+            models.Appointment.deleted_at.is_(None)
+        )
+    )
+
+    return db.scalar(statement)
+
+def find_overlapping_appointment(
+    db: Session,
+    professional_id: int,
+    start_at: datetime,
+    end_at: datetime,
+    exclude_appointment_id: int | None = None
+):
+    statement = (
+        select(models.Appointment)
+        .where(
+            models.Appointment.professional_id == professional_id,
+            models.Appointment.deleted_at.is_(None),
+            models.Appointment.status.notin_(
+                ["cancelled", "no_show"]
+            ),
+            models.Appointment.start_at < end_at,
+            models.Appointment.end_at > start_at
+        )
+    )
+
+    if exclude_appointment_id is not None:
+        statement = statement.where(
+            models.Appointment.id != exclude_appointment_id
+        )
+
+    return db.scalar(statement)
+
+
+
+def update_appointment(
+    db: Session,
+    db_appointment: models.Appointment,
+    update_data: dict
+):
+    for field, value in update_data.items():
+        setattr(
+            db_appointment,
+            field,
+            value
+        )
+
+    db.flush()
+
+    return db_appointment
+
+
+
+def get_appointments(
+    db: Session,
+    patient_id: int | None = None,
+    professional_id: int | None = None,
+    status: str | None = None,
+    start_from: datetime | None = None,
+    start_until: datetime | None = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    filters = [
+        models.Appointment.deleted_at.is_(None)
+    ]
+
+    if patient_id is not None:
+        filters.append(
+            models.Appointment.patient_id == patient_id
+        )
+
+    if professional_id is not None:
+        filters.append(
+            models.Appointment.professional_id == professional_id
+        )
+
+    if status is not None:
+        filters.append(
+            models.Appointment.status == status
+        )
+
+    if start_from is not None:
+        filters.append(
+            models.Appointment.start_at >= start_from
+        )
+
+    if start_until is not None:
+        filters.append(
+            models.Appointment.start_at < start_until
+        )
+
+    total_statement = (
+        select(func.count())
+        .select_from(models.Appointment)
+        .where(*filters)
+    )
+
+    total = db.scalar(total_statement) or 0
+
+    statement = (
+        select(models.Appointment)
+        .where(*filters)
+        .order_by(
+            models.Appointment.start_at,
+            models.Appointment.id
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    appointments = db.scalars(statement).all()
+
+    return appointments, total
+
+def delete_appointment(
+    db: Session,
+    appointment_id: int
+):
+    db_appointment = get_appointment(
+        db,
+        appointment_id
+    )
+
+    if db_appointment is None:
+        return None
+
+    db_appointment.deleted_at = datetime.now(
+        timezone.utc
+    )
+
+    db.commit()
+    db.refresh(db_appointment)
+
+    return db_appointment
+
+def get_appointment_including_deleted(
+    db: Session,
+    appointment_id: int
+):
+    return db.get(
+        models.Appointment,
+        appointment_id
+    )
