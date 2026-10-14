@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_user: str
     database_password: str
 
+    clinic_timezone: str = "America/Argentina/Buenos_Aires"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore"

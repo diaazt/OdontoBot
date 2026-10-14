@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, String, func, Numeric, ForeignKey, text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -115,6 +115,12 @@ class Professional(Base):
         nullable=True
     )
     appointments: Mapped[list["Appointment"]] = relationship(
+    back_populates="professional"
+    )
+    working_hours: Mapped[list["ProfessionalWorkingHours"]] = relationship(
+    back_populates="professional"
+    )
+    time_off_periods: Mapped[list["ProfessionalTimeOff"]] = relationship(
     back_populates="professional"
 )
 
@@ -336,4 +342,114 @@ class Appointment(Base):
 
     service: Mapped["Service | None"] = relationship(
         back_populates="appointments"
+    )
+
+class ProfessionalWorkingHours(Base):
+    __tablename__ = "professional_working_hours"
+
+    __table_args__ = (
+        CheckConstraint(
+            "weekday >= 0 AND weekday <= 6",
+            name="ck_working_hours_weekday_valid"
+        ),
+        CheckConstraint(
+            "end_time > start_time",
+            name="ck_working_hours_end_after_start"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    professional_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "professionals.id",
+            ondelete="RESTRICT"
+        ),
+        index=True
+    )
+
+    weekday: Mapped[int] = mapped_column(
+        index=True
+    )
+
+    start_time: Mapped[time]
+
+    end_time: Mapped[time]
+
+    active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    professional: Mapped["Professional"] = relationship(
+        back_populates="working_hours"
+    )
+
+class ProfessionalTimeOff(Base):
+    __tablename__ = "professional_time_off"
+
+    __table_args__ = (
+        CheckConstraint(
+            "end_at > start_at",
+            name="ck_professional_time_off_end_after_start"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    professional_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "professionals.id",
+            ondelete="RESTRICT"
+        ),
+        index=True
+    )
+
+    start_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        index=True
+    )
+
+    end_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    reason: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    professional: Mapped["Professional"] = relationship(
+        back_populates="time_off_periods"
     )

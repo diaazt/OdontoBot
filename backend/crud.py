@@ -893,3 +893,278 @@ def get_appointment_including_deleted(
         models.Appointment,
         appointment_id
     )
+
+def create_working_hours(
+    db: Session,
+    professional_id: int,
+    working_hours: schemas.WorkingHoursCreate
+):
+    db_working_hours = models.ProfessionalWorkingHours(
+        professional_id=professional_id,
+        **working_hours.model_dump()
+    )
+
+    db.add(db_working_hours)
+    db.flush()
+
+    return db_working_hours
+
+
+def get_working_hours(
+    db: Session,
+    working_hours_id: int
+):
+    return db.get(
+        models.ProfessionalWorkingHours,
+        working_hours_id
+    )
+
+
+def get_professional_working_hours(
+    db: Session,
+    professional_id: int
+):
+    statement = (
+        select(models.ProfessionalWorkingHours)
+        .where(
+            models.ProfessionalWorkingHours.professional_id
+            == professional_id
+        )
+        .order_by(
+            models.ProfessionalWorkingHours.weekday,
+            models.ProfessionalWorkingHours.start_time
+        )
+    )
+
+    return db.scalars(statement).all()
+
+
+def find_overlapping_working_hours(
+    db: Session,
+    professional_id: int,
+    weekday: int,
+    start_time,
+    end_time,
+    exclude_working_hours_id: int | None = None
+):
+    statement = (
+        select(models.ProfessionalWorkingHours)
+        .where(
+            models.ProfessionalWorkingHours.professional_id
+            == professional_id,
+            models.ProfessionalWorkingHours.weekday
+            == weekday,
+            models.ProfessionalWorkingHours.active.is_(True),
+            models.ProfessionalWorkingHours.start_time
+            < end_time,
+            models.ProfessionalWorkingHours.end_time
+            > start_time
+        )
+    )
+
+    if exclude_working_hours_id is not None:
+        statement = statement.where(
+            models.ProfessionalWorkingHours.id
+            != exclude_working_hours_id
+        )
+
+    return db.scalar(statement)
+
+
+def update_working_hours(
+    db: Session,
+    db_working_hours: models.ProfessionalWorkingHours,
+    update_data: dict
+):
+    for field, value in update_data.items():
+        setattr(
+            db_working_hours,
+            field,
+            value
+        )
+
+    db.flush()
+
+    return db_working_hours
+
+def create_time_off(
+    db: Session,
+    professional_id: int,
+    time_off: schemas.TimeOffCreate
+):
+    db_time_off = models.ProfessionalTimeOff(
+        professional_id=professional_id,
+        **time_off.model_dump()
+    )
+
+    db.add(db_time_off)
+    db.flush()
+
+    return db_time_off
+
+
+def get_time_off(
+    db: Session,
+    time_off_id: int
+):
+    statement = (
+        select(models.ProfessionalTimeOff)
+        .where(
+            models.ProfessionalTimeOff.id == time_off_id,
+            models.ProfessionalTimeOff.deleted_at.is_(None)
+        )
+    )
+
+    return db.scalar(statement)
+
+
+def get_professional_time_off(
+    db: Session,
+    professional_id: int
+):
+    statement = (
+        select(models.ProfessionalTimeOff)
+        .where(
+            models.ProfessionalTimeOff.professional_id
+            == professional_id,
+            models.ProfessionalTimeOff.deleted_at.is_(None)
+        )
+        .order_by(
+            models.ProfessionalTimeOff.start_at,
+            models.ProfessionalTimeOff.id
+        )
+    )
+
+    return db.scalars(statement).all()
+
+
+def find_overlapping_time_off(
+    db: Session,
+    professional_id: int,
+    start_at: datetime,
+    end_at: datetime,
+    exclude_time_off_id: int | None = None
+):
+    statement = (
+        select(models.ProfessionalTimeOff)
+        .where(
+            models.ProfessionalTimeOff.professional_id
+            == professional_id,
+            models.ProfessionalTimeOff.deleted_at.is_(None),
+            models.ProfessionalTimeOff.start_at < end_at,
+            models.ProfessionalTimeOff.end_at > start_at
+        )
+    )
+
+    if exclude_time_off_id is not None:
+        statement = statement.where(
+            models.ProfessionalTimeOff.id
+            != exclude_time_off_id
+        )
+
+    return db.scalar(statement)
+
+
+def update_time_off(
+    db: Session,
+    db_time_off: models.ProfessionalTimeOff,
+    update_data: dict
+):
+    for field, value in update_data.items():
+        setattr(
+            db_time_off,
+            field,
+            value
+        )
+
+    db.flush()
+
+    return db_time_off
+
+
+def delete_time_off(
+    db: Session,
+    time_off_id: int
+):
+    db_time_off = get_time_off(
+        db,
+        time_off_id
+    )
+
+    if db_time_off is None:
+        return None
+
+    db_time_off.deleted_at = datetime.now(
+        timezone.utc
+    )
+
+    db.commit()
+    db.refresh(db_time_off)
+
+    return db_time_off
+
+def get_active_working_hours_for_weekday(
+    db: Session,
+    professional_id: int,
+    weekday: int
+):
+    statement = (
+        select(models.ProfessionalWorkingHours)
+        .where(
+            models.ProfessionalWorkingHours.professional_id
+            == professional_id,
+            models.ProfessionalWorkingHours.weekday
+            == weekday,
+            models.ProfessionalWorkingHours.active.is_(True)
+        )
+        .order_by(
+            models.ProfessionalWorkingHours.start_time
+        )
+    )
+
+    return db.scalars(statement).all()
+
+
+def get_blocking_appointments(
+    db: Session,
+    professional_id: int,
+    start_at: datetime,
+    end_at: datetime
+):
+    statement = (
+        select(models.Appointment)
+        .where(
+            models.Appointment.professional_id
+            == professional_id,
+            models.Appointment.deleted_at.is_(None),
+            models.Appointment.status.notin_(
+                ["cancelled", "no_show"]
+            ),
+            models.Appointment.start_at < end_at,
+            models.Appointment.end_at > start_at
+        )
+        .order_by(models.Appointment.start_at)
+    )
+
+    return db.scalars(statement).all()
+
+
+def get_time_off_in_range(
+    db: Session,
+    professional_id: int,
+    start_at: datetime,
+    end_at: datetime
+):
+    statement = (
+        select(models.ProfessionalTimeOff)
+        .where(
+            models.ProfessionalTimeOff.professional_id
+            == professional_id,
+            models.ProfessionalTimeOff.deleted_at.is_(None),
+            models.ProfessionalTimeOff.start_at < end_at,
+            models.ProfessionalTimeOff.end_at > start_at
+        )
+        .order_by(models.ProfessionalTimeOff.start_at)
+    )
+
+    return db.scalars(statement).all()

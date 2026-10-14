@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
 import phonenumbers
@@ -473,3 +473,203 @@ class AppointmentListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+class WorkingHoursCreate(BaseModel):
+    weekday: int = Field(ge=0, le=6)
+    start_time: time
+    end_time: time
+    active: bool = True
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def validate_local_time(cls, value: time) -> time:
+        if value.utcoffset() is not None:
+            raise ValueError(
+                "Working hours must use local time without timezone information"
+            )
+
+        return value
+
+    @model_validator(mode="after")
+    def validate_period(self):
+        if self.end_time <= self.start_time:
+            raise ValueError(
+                "end_time must be after start_time"
+            )
+
+        return self
+
+class WorkingHoursUpdate(BaseModel):
+    weekday: int | None = Field(
+        default=None,
+        ge=0,
+        le=6
+    )
+
+    start_time: time | None = None
+    end_time: time | None = None
+    active: bool | None = None
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def validate_local_time(
+        cls,
+        value: time | None
+    ) -> time:
+        if value is None:
+            raise ValueError(
+            "start_time and end_time cannot be null"
+        )
+
+        if value.utcoffset() is not None:
+            raise ValueError(
+                "Working hours must use local time without timezone information"
+            )
+
+        return value
+
+    @model_validator(mode="after")
+    def validate_period(self):
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.end_time <= self.start_time
+        ):
+            raise ValueError(
+                "end_time must be after start_time"
+            )
+
+        return self
+    
+class WorkingHoursResponse(BaseModel):
+    id: int
+    professional_id: int
+
+    weekday: int
+    start_time: time
+    end_time: time
+    active: bool
+
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+class TimeOffCreate(BaseModel):
+    start_at: datetime
+    end_at: datetime
+    reason: str | None = None
+
+    @field_validator("start_at", "end_at")
+    @classmethod
+    def validate_timezone(
+        cls,
+        value: datetime
+    ) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError(
+                "Datetime must include timezone information"
+            )
+
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        return value or None
+
+    @model_validator(mode="after")
+    def validate_period(self):
+        if self.end_at <= self.start_at:
+            raise ValueError(
+                "end_at must be after start_at"
+            )
+
+        return self
+
+class TimeOffUpdate(BaseModel):
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    reason: str | None = None
+
+    @field_validator("start_at", "end_at")
+    @classmethod
+    def validate_timezone(
+        cls,
+        value: datetime | None
+    ) -> datetime:
+        if value is None:
+            raise ValueError(
+            "start_at and end_at cannot be null"
+        )
+
+        if value.utcoffset() is None:
+            raise ValueError(
+                "Datetime must include timezone information"
+            )
+
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(
+        cls,
+        value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        return value or None
+
+    @model_validator(mode="after")
+    def validate_period(self):
+        if (
+            self.start_at is not None
+            and self.end_at is not None
+            and self.end_at <= self.start_at
+        ):
+            raise ValueError(
+                "end_at must be after start_at"
+            )
+
+        return self
+
+class TimeOffResponse(BaseModel):
+    id: int
+    professional_id: int
+
+    start_at: datetime
+    end_at: datetime
+    reason: str | None
+
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+class AvailabilitySlotResponse(BaseModel):
+    start_at: datetime
+    end_at: datetime
+
+
+class AvailabilityResponse(BaseModel):
+    professional_id: int
+    date: date
+    duration_minutes: int
+    slot_step_minutes: int
+    slots: list[AvailabilitySlotResponse]
