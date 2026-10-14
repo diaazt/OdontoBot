@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     database_password: str
 
     clinic_timezone: str = "America/Argentina/Buenos_Aires"
+    
+    auth_secret_key: str
+    access_token_expire_minutes: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

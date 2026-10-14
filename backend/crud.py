@@ -1168,3 +1168,44 @@ def get_time_off_in_range(
     )
 
     return db.scalars(statement).all()
+
+def get_user(
+    db: Session,
+    user_id: int
+):
+    return db.get(
+        models.User,
+        user_id
+    )
+
+
+def get_user_by_email(
+    db: Session,
+    email: str
+):
+    statement = (
+        select(models.User)
+        .where(
+            models.User.email == email
+        )
+    )
+
+    return db.scalar(statement)
+
+
+def create_user(
+    db: Session,
+    email: str,
+    password_hash: str,
+    role: str
+):
+    db_user = models.User(
+        email=email,
+        password_hash=password_hash,
+        role=role
+    )
+
+    db.add(db_user)
+    db.flush()
+
+    return db_user

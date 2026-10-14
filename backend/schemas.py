@@ -673,3 +673,51 @@ class AvailabilityResponse(BaseModel):
     duration_minutes: int
     slot_step_minutes: int
     slots: list[AvailabilitySlotResponse]
+
+UserRole = Literal[
+    "admin",
+    "secretary",
+    "professional",
+]
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(
+        min_length=8,
+        max_length=128
+    )
+    role: UserRole
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    role: UserRole
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
